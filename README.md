@@ -2,6 +2,11 @@
 A simple golang example for a producer and consumer using rabbitMQ
 
 ### Usage
+
+```
+go get ./...
+```
+
 In one terminal, cd to the producer directory and run the producer with optional QPC_RABBITMQ_URL environment variable
 
 ```
