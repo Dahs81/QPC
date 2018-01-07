@@ -18,19 +18,9 @@ func main() {
 	if rabbitURL == "" {
 		rabbitURL = "amqp://guest:guest@localhost:5672/"
 	}
-	conn, err := amqp.Dial(rabbitURL)
-	if err != nil {
-		panic(err)
-	}
-
-	ch, err := conn.Channel()
-	if err != nil {
-		panic(err)
-	}
-	defer ch.Close()
 
 	r := mux.NewRouter()
-	r.Handle("/send", sendHandler("testing", "my-data", ch)).Methods("POST")
+	r.Handle("/send", sendHandler(rabbitURL, "testing", "my-data")).Methods("POST")
 
 	s := &http.Server{
 		Addr:           ":8080",
@@ -47,24 +37,40 @@ type Message struct {
 	Name string `json:"name"`
 }
 
-func sendHandler(s, qn string, ch *amqp.Channel) http.HandlerFunc {
+func sendHandler(rabbitURL, s, qn string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("sendHandler called")
 		w.Header().Set("Content-Type", "application/json")
 
 		var m Message
 		b, _ := ioutil.ReadAll(r.Body)
 		json.Unmarshal(b, &m)
 
-		err := sendMessage(m.Name, qn, ch)
+		err := sendMessage(rabbitURL, m.Name, qn)
 		if err != nil {
-			w.Write([]byte("Error"))
+			fmt.Printf("error: %+v\n", err)
+			w.Write([]byte("err"))
 		}
+
+		fmt.Println("sent")
 		w.Write([]byte("Message Send"))
 	}
 }
 
 // This could be in a package called producer ?
-func sendMessage(s, qn string, ch *amqp.Channel) error {
+func sendMessage(rabbitURL, s, qn string) error {
+	conn, err := amqp.Dial(rabbitURL)
+	if err != nil {
+		panic(err)
+	}
+
+	ch, err := conn.Channel()
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	defer ch.Close()
+
 	q, err := ch.QueueDeclare(
 		qn,
 		false,
@@ -76,8 +82,6 @@ func sendMessage(s, qn string, ch *amqp.Channel) error {
 	if err != nil {
 		return fmt.Errorf("%s", err)
 	}
-
-	fmt.Println(s)
 
 	err = ch.Publish(
 		"",
