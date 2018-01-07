@@ -19,8 +19,15 @@ func main() {
 		rabbitURL = "amqp://guest:guest@localhost:5672/"
 	}
 
+	conn, err := amqp.Dial(rabbitURL)
+	if err != nil {
+		panic(err)
+	}
+
+	defer conn.Close()
+
 	r := mux.NewRouter()
-	r.Handle("/send", sendHandler(rabbitURL, "testing", "my-data")).Methods("POST")
+	r.Handle("/send", sendHandler(rabbitURL, "testing", "my-data", conn)).Methods("POST")
 
 	s := &http.Server{
 		Addr:           ":8080",
@@ -37,38 +44,31 @@ type Message struct {
 	Name string `json:"name"`
 }
 
-func sendHandler(rabbitURL, s, qn string) http.HandlerFunc {
+func sendHandler(rabbitURL, s, qn string, conn *amqp.Connection) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("sendHandler called")
 		w.Header().Set("Content-Type", "application/json")
 
 		var m Message
 		b, _ := ioutil.ReadAll(r.Body)
 		json.Unmarshal(b, &m)
 
-		err := sendMessage(rabbitURL, m.Name, qn)
+		err := sendMessage(rabbitURL, m.Name, qn, conn)
 		if err != nil {
 			fmt.Printf("error: %+v\n", err)
 			w.Write([]byte("err"))
 		}
 
-		fmt.Println("sent")
 		w.Write([]byte("Message Send"))
 	}
 }
 
 // This could be in a package called producer ?
-func sendMessage(rabbitURL, s, qn string) error {
-	conn, err := amqp.Dial(rabbitURL)
-	if err != nil {
-		panic(err)
-	}
+func sendMessage(rabbitURL, s, qn string, conn *amqp.Connection) error {
 
 	ch, err := conn.Channel()
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
 	defer ch.Close()
 
 	q, err := ch.QueueDeclare(
